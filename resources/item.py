@@ -1,4 +1,10 @@
-from flask_jwt import jwt_required
+from flask_jwt_extended import (
+    jwt_required,
+    get_jwt_claims,
+    jwt_optional,
+    get_jwt_identity,
+    fresh_jwt_required
+)
 from flask_restful import Resource, reqparse
 from models.item import ItemModel
 
@@ -12,14 +18,14 @@ class Item(Resource):
                         type=int,
                         required=True,
                         help='item needs to belong to some store')
-    @jwt_required()
+    @jwt_required
     def get(self, name):
         item = ItemModel.find_by_name(name)
         if item:
             return item.json()
         return {"item" : "not found"}
 
-
+    @fresh_jwt_required
     def post(self, name):
         if ItemModel.find_by_name(name):
             return {"item": "item with this name already exists"}
@@ -30,7 +36,12 @@ class Item(Resource):
         except:
             return {"message": "an error occurred while inserting an item"}, 500
         return item.json(), 201
+
+    @jwt_required
     def delete(self, name):
+        claims = get_jwt_claims()
+        if not claims['is_admin']:
+            return {'Error': 'You have to be an admin'}
         item = ItemModel.find_by_name(name)
         if item:
             item.delete_from_db()
@@ -47,5 +58,12 @@ class Item(Resource):
         return item.json()
 
 class Items(Resource):
+
+    @jwt_optional
     def get(self,):
-        return [item.json() for item in ItemModel.query.all()]
+        user_id = get_jwt_identity()
+        items = [item.json() for item in ItemModel.find_all()]
+        if user_id:
+            return {'items': items}
+        return {"items": [item.name for item in ItemModel.find_all()],
+                "message": "more data available if you log in"}
